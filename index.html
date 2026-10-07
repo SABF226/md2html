@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self'; base-uri 'none'; form-action 'none'">
+<title>md2html — Markdown vers HTML</title>
+<style>
+@font-face{font-family:"Instrument Sans";font-weight:400;font-style:normal;font-display:swap;src:url("fonts/instrument-sans-400.woff2") format("woff2")}
+@font-face{font-family:"Instrument Sans";font-weight:500;font-style:normal;font-display:swap;src:url("fonts/instrument-sans-500.woff2") format("woff2")}
+@font-face{font-family:"Instrument Sans";font-weight:600;font-style:normal;font-display:swap;src:url("fonts/instrument-sans-600.woff2") format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:400;font-style:normal;font-display:swap;src:url("fonts/jetbrains-mono-400.woff2") format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:500;font-style:normal;font-display:swap;src:url("fonts/jetbrains-mono-500.woff2") format("woff2")}
+:root{
+  --paper:#EEF1F5; --panel:#FFFFFF; --wash:#F4F6F9; --ink:#16202C; --muted:#5A6878; --line:#D6DCE4;
+  --accent:#2B4FE0; --accent-ink:#FFFFFF; --mark:#FFD84D; --mark-ink:#3A2F00;
+  --ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F141B; --panel:#171E27; --wash:#1C2531; --ink:#E7ECF2; --muted:#93A1B2; --line:#2A3441;
+    --accent:#7C98FF; --accent-ink:#0D1530;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F141B; --panel:#171E27; --wash:#1C2531; --ink:#E7ECF2; --muted:#93A1B2; --line:#2A3441;
+  --accent:#7C98FF; --accent-ink:#0D1530;
+}
+*{box-sizing:border-box}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;background:var(--paper);color:var(--ink);font:400 15px/1.5 var(--ui);-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{height:100%;display:flex;flex-direction:column;min-height:0}
+
+/* En-tête */
+.top{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{font:500 15px var(--mono);letter-spacing:-.02em}
+.tag{color:var(--muted);font-size:14px}
+.spacer{flex:1}
+
+/* Boutons */
+.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;font-weight:500;cursor:pointer;white-space:nowrap;transition:border-color .15s,background-color .15s}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.08);border-color:var(--accent)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.quiet:hover:not(:disabled){color:var(--ink);border-color:transparent;background:var(--wash)}
+.btn svg,.chip-x svg{width:16px;height:16px;flex:none}
+
+/* Documents ouverts */
+.docs{display:flex;align-items:center;gap:6px;padding:8px 16px;overflow-x:auto;background:var(--paper);border-bottom:1px solid var(--line);scrollbar-width:thin}
+.chip{display:inline-flex;align-items:center;flex:none;max-width:240px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.chip[aria-current="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.chip-name{border:0;background:none;color:var(--ink);font:inherit;font-weight:500;padding:5px 4px 5px 12px;border-radius:999px;cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip-x{display:grid;place-items:center;width:26px;height:26px;margin-right:3px;border:0;border-radius:50%;background:none;color:var(--muted);cursor:pointer}
+.chip-x:hover{background:var(--wash);color:var(--ink)}
+.chip-x svg{width:14px;height:14px}
+.btn-add{height:30px;border-radius:999px;flex:none}
+
+/* État vide */
+.empty{flex:1;min-height:0;overflow:auto;display:grid;place-items:center;padding:28px 20px}
+.sheet{width:100%;max-width:860px}
+.sheet h1{margin:0 0 12px;font-size:clamp(1.75rem,4.2vw,2.6rem);line-height:1.12;letter-spacing:-.025em;font-weight:600;max-width:20ch}
+.sheet .lead{margin:0 0 24px;max-width:56ch;color:var(--muted);font-size:16px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.actions .btn{height:40px;padding:0 16px}
+.fine{margin:0 0 32px;color:var(--muted);font-size:13px}
+.demo{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+.demo pre{margin:0;padding:18px 20px;font:400 13.5px/1.7 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.demo pre+pre{background:var(--wash);border-left:1px solid var(--line);color:var(--muted)}
+.demo .k{color:var(--accent)}
+@media (max-width:640px){.demo{grid-template-columns:1fr}.demo pre+pre{border-left:0;border-top:1px solid var(--line)}}
+
+/* Espace de travail */
+#workwrap{flex:1;min-height:0;display:flex;flex-direction:column}
+.work{flex:1;min-height:0;display:flex}
+.pane{flex:1 1 0;min-width:0;display:none;flex-direction:column;background:var(--panel)}
+#workwrap[data-view="source"] #pane-source,
+#workwrap[data-view="preview"] #pane-out,
+#workwrap[data-view="html"] #pane-out{display:flex}
+.pane-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-height:52px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.pane-title{font-weight:600}
+.pane-meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:13px}
+
+.seg{display:inline-flex;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
+.seg button{border:0;border-radius:6px;background:none;color:var(--muted);font:inherit;font-weight:500;padding:5px 14px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.mswitch{padding:8px 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.mswitch .seg{display:flex}
+.mswitch .seg button{flex:1}
+.tabs{display:none}
+
+.check{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:14px;cursor:pointer}
+.check input{accent-color:var(--accent);width:16px;height:16px;margin:0}
+
+#editor{flex:1;min-height:0;width:100%;resize:none;border:0;border-radius:0;padding:16px;background:var(--panel);color:var(--ink);font:400 14px/1.7 var(--mono);tab-size:2}
+#editor:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent)}
+.out-body{flex:1;min-height:0;position:relative;background:var(--wash)}
+#preview{display:block;width:100%;height:100%;border:0}
+#htmlOut{display:none;width:100%;height:100%;resize:none;border:0;padding:16px;background:var(--wash);color:var(--ink);font:400 13px/1.65 var(--mono);white-space:pre;overflow:auto}
+#htmlOut:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent)}
+#workwrap[data-view="html"] #preview{display:none}
+#workwrap[data-view="html"] #htmlOut{display:block}
+
+@media (min-width:880px){
+  .mswitch{display:none}
+  .tabs{display:inline-flex}
+  #pane-source{display:flex!important;border-right:1px solid var(--line)}
+  #pane-out{display:flex!important}
+}
+@media (max-width:640px){
+  .tag{display:none}
+  .top .lbl,#btnCopy .lbl{display:none}
+  .top .btn{padding:0 10px}
+}
+
+/* Dépôt de fichiers */
+.veil{position:fixed;inset:0;z-index:20;display:none;padding:14px;background:rgba(255,216,77,.9);pointer-events:none}
+.veil.on{display:block}
+.veil div{height:100%;display:grid;place-items:center;border:3px dashed var(--mark-ink);border-radius:16px;color:var(--mark-ink);font-size:clamp(1.4rem,4vw,2.2rem);font-weight:600;letter-spacing:-.02em;text-align:center;padding:16px}
+
+/* Notifications */
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:30;transform:translate(-50%,8px);display:flex;align-items:center;gap:14px;max-width:min(560px,calc(100vw - 24px));padding:10px 14px;border-radius:10px;background:var(--ink);color:var(--paper);font-size:14px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+.toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast button{border:0;background:none;color:var(--mark);font:inherit;font-weight:600;cursor:pointer;padding:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <span class="brand">md2html</span>
+    <span class="tag">Markdown vers HTML</span>
+    <span class="spacer"></span>
+    <button class="btn" id="btnZip" hidden aria-label="Tout télécharger (.zip)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>
+      <span class="lbl">Tout télécharger (.zip)</span>
+    </button>
+    <button class="btn" id="btnOpen" aria-label="Ouvrir des fichiers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+      <span class="lbl">Ouvrir des fichiers</span>
+    </button>
+  </header>
+
+  <nav class="docs" id="docs" aria-label="Documents ouverts" hidden></nav>
+
+  <main class="empty" id="empty">
+    <div class="sheet">
+      <h1>Convertis tes fichiers Markdown en HTML propre</h1>
+      <p class="lead">Dépose un ou plusieurs fichiers .md n'importe où sur la page. L'aperçu suit tes modifications, et chaque fichier se télécharge en .html.</p>
+      <div class="actions">
+        <button class="btn primary" id="emptyOpen">Choisir des fichiers</button>
+        <button class="btn" id="emptyNew">Écrire un document</button>
+        <button class="btn quiet" id="emptySample">Essayer un exemple</button>
+      </div>
+      <p class="fine">Formats acceptés : .md, .markdown, .txt (5 Mo max). La conversion reste dans ton navigateur.</p>
+      <div class="demo" aria-hidden="true">
+<pre><span class="k">#</span> Bonjour
+
+Un texte <span class="k">**</span>simple<span class="k">**</span>,
+une <span class="k">[</span>source<span class="k">](</span>url<span class="k">)</span>.</pre>
+<pre>&lt;h1&gt;Bonjour&lt;/h1&gt;
+&lt;p&gt;Un texte &lt;strong&gt;simple&lt;/strong&gt;,
+une &lt;a href="url"&gt;source&lt;/a&gt;.&lt;/p&gt;</pre>
+      </div>
+    </div>
+  </main>
+
+  <div id="workwrap" data-view="preview" hidden>
+    <div class="mswitch">
+      <div class="seg" role="group" aria-label="Affichage">
+        <button type="button" data-view-btn="source" aria-pressed="false">Source</button>
+        <button type="button" data-view-btn="preview" aria-pressed="true">Aperçu</button>
+        <button type="button" data-view-btn="html" aria-pressed="false">HTML</button>
+      </div>
+    </div>
+    <div class="work">
+      <section class="pane" id="pane-source" aria-label="Source Markdown">
+        <div class="pane-head">
+          <span class="pane-title">Source</span>
+          <span class="pane-meta" id="srcMeta"></span>
+        </div>
+        <textarea id="editor" spellcheck="false" autocomplete="off" aria-label="Contenu Markdown"></textarea>
+      </section>
+
+      <section class="pane" id="pane-out" aria-label="Résultat">
+        <div class="pane-head">
+          <div class="seg tabs" role="group" aria-label="Format de sortie">
+            <button type="button" data-view-btn="preview" aria-pressed="true">Aperçu</button>
+            <button type="button" data-view-btn="html" aria-pressed="false">HTML</button>
+          </div>
+          <span class="spacer"></span>
+          <label class="check" title="Inclut le head, les styles et la mise en page. Décoche pour obtenir uniquement le fragment HTML.">
+            <input type="checkbox" id="fullToggle" checked> Document complet
+          </label>
+          <button class="btn" id="btnCopy" aria-label="Copier le HTML">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+            <span class="lbl">Copier le HTML</span>
+          </button>
+          <button class="btn primary" id="btnSave" disabled title="Ctrl/⌘ + S">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>
+            <span>Télécharger .html</span>
+          </button>
+        </div>
+        <div class="out-body">
+          <iframe id="preview" title="Aperçu du rendu HTML" sandbox="allow-same-origin"></iframe>
+          <textarea id="htmlOut" readonly spellcheck="false" aria-label="Code HTML généré"></textarea>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="veil" id="veil" aria-hidden="true"><div>Dépose tes fichiers pour les ouvrir</div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="fileInput" accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" multiple hidden>
+
+<script>
+/**
+ * md2html.js — convertisseur Markdown → HTML, sans dépendance.
+ * Supporte : titres, gras/italique/barré, code inline et fenced, liens, images,
+ * listes (imbriquées, ordonnées ou non), citations, séparateurs, paragraphes.
+ * Sécurité : le HTML brut est échappé, les URLs javascript:/data:/vbscript: sont neutralisées.
+ */
+(function (root) {
+  const escapeHtml = (s) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  const safeUrl = (u) => (/^\s*(javascript|data|vbscript):/i.test(u) ? "#" : u);
+
+  const RE = {
+    fence: /^```(\w*)\s*$/,
+    heading: /^(#{1,6})\s+(.*?)\s*#*\s*$/,
+    hr: /^\s*([-*_])(\s*\1){2,}\s*$/,
+    quote: /^\s*>\s?(.*)$/,
+    list: /^(\s*)([-*+]|\d+\.)\s+(.*)$/,
+  };
+
+  const isBlockStart = (line) =>
+    RE.fence.test(line) || RE.heading.test(line) || RE.hr.test(line) || RE.quote.test(line) || RE.list.test(line);
+
+  function inline(text) {
+    const codes = [];
+    // Protège le code inline avant tout autre traitement
+    text = text.replace(/`([^`]+)`/g, (_, c) => `\u0000${codes.push(c) - 1}\u0000`);
+    text = escapeHtml(text)
+      .replace(/!\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (_, alt, src) => `<img src="${safeUrl(src)}" alt="${alt}">`)
+      .replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (_, t, href) => `<a href="${safeUrl(href)}">${t}</a>`)
+      .replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_, a, b) => `<strong>${a ?? b}</strong>`)
+      .replace(/\*(.+?)\*|\b_(.+?)_\b/g, (_, a, b) => `<em>${a ?? b}</em>`)
+      .replace(/~~(.+?)~~/g, "<del>$1</del>");
+    return text.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${escapeHtml(codes[i])}</code>`);
+  }
+
+  function parseList(lines, start) {
+    const first = lines[start].match(RE.list);
+    const base = first[1].length;
+    const tag = /\d/.test(first[2]) ? "ol" : "ul";
+    let html = `<${tag}>`;
+    let i = start;
+    while (i < lines.length) {
+      const m = lines[i].match(RE.list);
+      if (!m || m[1].length < base) break;
+      if (m[1].length > base) {
+        const [nested, next] = parseList(lines, i);
+        html = html.replace(/<\/li>$/, nested + "</li>");
+        i = next;
+        continue;
+      }
+      html += `<li>${inline(m[3])}</li>`;
+      i++;
+    }
+    return [`${html}</${tag}>`, i];
+  }
+
+  function markdownToHtml(md) {
+    const lines = String(md).replace(/\r\n?/g, "\n").split("\n");
+    const out = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      let m;
+
+      if (!line.trim()) { i++; continue; }
+
+      if ((m = line.match(RE.fence))) {
+        const code = [];
+        i++;
+        while (i < lines.length && !RE.fence.test(lines[i])) code.push(lines[i++]);
+        i++; // ferme le bloc
+        const cls = m[1] ? ` class="language-${m[1]}"` : "";
+        out.push(`<pre><code${cls}>${escapeHtml(code.join("\n"))}</code></pre>`);
+        continue;
+      }
+
+      if ((m = line.match(RE.heading))) {
+        const n = m[1].length;
+        out.push(`<h${n}>${inline(m[2])}</h${n}>`);
+        i++;
+        continue;
+      }
+
+      if (RE.hr.test(line)) { out.push("<hr>"); i++; continue; }
+
+      if (RE.quote.test(line)) {
+        const inner = [];
+        while (i < lines.length && RE.quote.test(lines[i])) inner.push(lines[i++].match(RE.quote)[1]);
+        out.push(`<blockquote>${markdownToHtml(inner.join("\n"))}</blockquote>`);
+        continue;
+      }
+
+      if (RE.list.test(line)) {
+        const [html, next] = parseList(lines, i);
+        out.push(html);
+        i = next;
+        continue;
+      }
+
+      // Paragraphe
+      const para = [];
+      while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) para.push(lines[i++].trim());
+      out.push(`<p>${inline(para.join("\n"))}</p>`);
+    }
+
+    return out.join("\n");
+  }
+
+  if (typeof module !== "undefined" && module.exports) module.exports = { markdownToHtml };
+  else root.markdownToHtml = markdownToHtml;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const MAX_BYTES = 5 * 1024 * 1024;
+  const OK_EXT = /\.(md|markdown|mdown|txt)$/i;
+  const state = { docs: [], active: null, seq: 1, full: true, view: "preview" };
+  let downloads = null;
+
+  const SAMPLE = [
+    "# Guide de démarrage", "",
+    "Ce document montre ce que le convertisseur **comprend** : titres, *emphase*, ~~barré~~, `code inline` et [liens](https://developer.mozilla.org).", "",
+    "## Pourquoi Markdown ?", "",
+    "- Lisible tel quel",
+    "- Versionnable avec Git",
+    "  - diffs propres",
+    "  - revues de code simples",
+    "- Convertible en HTML", "",
+    "1. Écris ton texte",
+    "2. Vérifie l'aperçu",
+    "3. Télécharge le `.html`", "",
+    "> Un bon outil se fait oublier.", "",
+    "## Exemple de code", "",
+    "```js",
+    "const html = markdownToHtml(\"# Salut\");",
+    "```", "",
+    "---", "",
+    "Modifie ce texte : l'aperçu se met à jour en direct."
+  ].join("\n");
+
+  /* ---------- Export : feuille de style et gabarit ---------- */
+  const STYLE = [
+    ":root{color-scheme:light dark;--bg:#fff;--fg:#1c2530;--muted:#5a6878;--line:#dde2e8;--wash:#f3f5f8;--link:#2b4fe0}",
+    "@media (prefers-color-scheme:dark){:root{--bg:#12171e;--fg:#e4e9ef;--muted:#93a1b2;--line:#2a3441;--wash:#1b232d;--link:#8da6ff}}",
+    "*{box-sizing:border-box}",
+    "body{margin:0;background:var(--bg);color:var(--fg);font:1.0625rem/1.7 Charter,'Iowan Old Style',Georgia,serif}",
+    "article{max-width:68ch;margin:0 auto;padding:3rem 1.25rem 4rem}",
+    "h1,h2,h3,h4,h5,h6{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.25;letter-spacing:-.01em;margin:2em 0 .6em}",
+    "h1{font-size:2rem;margin-top:0}h2{font-size:1.5rem}h3{font-size:1.2rem}h4,h5,h6{font-size:1rem}",
+    "p,ul,ol,blockquote,pre{margin:0 0 1.1em}",
+    "li{margin:.2em 0}li>ul,li>ol{margin:.3em 0 0}",
+    "a{color:var(--link)}img{max-width:100%;height:auto}",
+    "code{font:.88em/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--wash);padding:.15em .35em;border-radius:4px}",
+    "pre{background:var(--wash);border:1px solid var(--line);border-radius:6px;padding:1rem;overflow-x:auto}",
+    "pre code{background:none;padding:0}",
+    "blockquote{margin-left:0;padding-left:1rem;border-left:3px solid var(--line);color:var(--muted)}",
+    "hr{border:0;border-top:1px solid var(--line);margin:2.5em 0}"
+  ].join("\n");
+
+  const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  function wrapDocument(body, title) {
+    return `<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${title}</title>\n<style>\n${STYLE}\n</style>\n</head>\n<body>\n<article>\n${body}\n</article>\n</body>\n</html>\n`;
+  }
+  const titleOf = (doc, body) => {
+    const m = body.match(/<h1>([\s\S]*?)<\/h1>/);
+    return m ? m[1].replace(/<[^>]+>/g, "") : escapeHtml(doc.name.replace(OK_EXT, ""));
+  };
+  const outputFor = (doc) => {
+    const body = markdownToHtml(doc.text);
+    return state.full ? wrapDocument(body, titleOf(doc, body)) : body;
+  };
+  const htmlName = (name) => name.replace(OK_EXT, "") + ".html";
+
+  // <zip>
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(buf) {
+    let crc = 0xffffffff;
+    for (let i = 0; i < buf.length; i++) crc = CRC_TABLE[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+  function makeZip(files) {
+    const enc = new TextEncoder(), parts = [], central = [];
+    const now = new Date();
+    const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    let offset = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data), size = data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+      lh.setUint16(26, name.length, true);
+      parts.push(new Uint8Array(lh.buffer), name, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+      ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      offset += 30 + name.length + size;
+    }
+    const centralSize = central.reduce((n, p) => n + p.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, centralSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+  }
+  // </zip>
+
+  /* ---------- Éléments ---------- */
+  const el = {
+    docs: $("#docs"), empty: $("#empty"), wrap: $("#workwrap"), editor: $("#editor"), meta: $("#srcMeta"),
+    preview: $("#preview"), htmlOut: $("#htmlOut"), save: $("#btnSave"), copy: $("#btnCopy"), zip: $("#btnZip"),
+    full: $("#fullToggle"), input: $("#fileInput"), veil: $("#veil"), toast: $("#toast")
+  };
+  const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+
+  /* ---------- Notifications ---------- */
+  let toastTimer;
+  function toast(message, action) {
+    clearTimeout(toastTimer);
+    el.toast.replaceChildren();
+    const span = document.createElement("span");
+    span.textContent = message;
+    el.toast.append(span);
+    if (action) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = action.label;
+      b.onclick = () => { el.toast.classList.remove("on"); action.fn(); };
+      el.toast.append(b);
+    }
+    el.toast.classList.add("on");
+    toastTimer = setTimeout(() => el.toast.classList.remove("on"), action ? 6000 : 3200);
+  }
+
+  /* ---------- Documents ---------- */
+  const current = () => state.docs.find((d) => d.id === state.active) || null;
+  function uniqueName(base) {
+    const taken = new Set(state.docs.map((d) => d.name));
+    if (!taken.has(base)) return base;
+    const stem = base.replace(OK_EXT, ""), ext = (base.match(OK_EXT) || [".md"])[0];
+    for (let i = 2; ; i++) if (!taken.has(`${stem}-${i}${ext}`)) return `${stem}-${i}${ext}`;
+  }
+  function addDoc(name, text) {
+    const doc = { id: state.seq++, name: uniqueName(name), text };
+    state.docs.push(doc);
+    return doc;
+  }
+  function activate(id) { state.active = id; refresh(); }
+
+  function renderDocs() {
+    el.docs.replaceChildren();
+    for (const d of state.docs) {
+      const chip = document.createElement("div");
+      chip.className = "chip";
+      if (d.id === state.active) chip.setAttribute("aria-current", "true");
+      const name = document.createElement("button");
+      name.type = "button"; name.className = "chip-name"; name.textContent = d.name; name.title = d.name;
+      name.onclick = () => activate(d.id);
+      const x = document.createElement("button");
+      x.type = "button"; x.className = "chip-x"; x.innerHTML = ICON_X; x.setAttribute("aria-label", "Fermer " + d.name);
+      x.onclick = () => closeDoc(d.id);
+      chip.append(name, x);
+      el.docs.append(chip);
+    }
+    const add = document.createElement("button");
+    add.type = "button"; add.className = "btn quiet btn-add"; add.innerHTML = ICON_PLUS + "<span>Nouveau</span>";
+    add.onclick = newDoc;
+    el.docs.append(add);
+    el.docs.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }
+
+  function closeDoc(id) {
+    const i = state.docs.findIndex((d) => d.id === id);
+    if (i < 0) return;
+    const [removed] = state.docs.splice(i, 1);
+    if (state.active === id) state.active = (state.docs[i] || state.docs[i - 1] || {}).id ?? null;
+    refresh();
+    toast(`${removed.name} fermé`, {
+      label: "Annuler",
+      fn: () => { state.docs.splice(i, 0, removed); state.active = removed.id; refresh(); }
+    });
+  }
+
+  function newDoc() {
+    const d = addDoc("sans-titre.md", "");
+    activate(d.id);
+    el.editor.focus();
+  }
+
+  function refresh() {
+    const has = state.docs.length > 0;
+    el.empty.hidden = has; el.docs.hidden = !has; el.wrap.hidden = !has;
+    el.zip.hidden = state.docs.length < 2 || !downloads;
+    if (has) renderDocs();
+    const d = current();
+    el.editor.value = d ? d.text : "";
+    updateOutput();
+  }
+
+  /* ---------- Rendu ---------- */
+  let article = null, timer;
+  function updateOutput() {
+    const d = current();
+    if (!d) return;
+    const body = markdownToHtml(d.text);
+    if (article) article.innerHTML = body;
+    el.htmlOut.value = state.full ? wrapDocument(body, titleOf(d, body)) : body;
+    const words = (d.text.trim().match(/\S+/g) || []).length;
+    el.meta.textContent = `${d.name} · ${words} mot${words > 1 ? "s" : ""}`;
+    el.save.title = `Enregistrer ${htmlName(d.name)} (Ctrl/⌘ + S)`;
+  }
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(updateOutput, 120); };
+
+  el.preview.addEventListener("load", () => {
+    const doc = el.preview.contentDocument;
+    article = doc.querySelector("article");
+    doc.addEventListener("click", (e) => { if (e.target.closest("a")) e.preventDefault(); });
+    updateOutput();
+  });
+  el.preview.srcdoc = wrapDocument("", "Aperçu");
+
+  el.editor.addEventListener("input", () => {
+    const d = current();
+    if (!d) return;
+    d.text = el.editor.value;
+    schedule();
+  });
+  el.full.addEventListener("change", () => { state.full = el.full.checked; updateOutput(); });
+
+  /* ---------- Vues ---------- */
+  const desktop = window.matchMedia("(min-width: 880px)");
+  function setView(v) {
+    if (desktop.matches && v === "source") v = "preview";
+    state.view = v;
+    el.wrap.dataset.view = v;
+    document.querySelectorAll("[data-view-btn]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.viewBtn === v)));
+  }
+  document.querySelectorAll("[data-view-btn]").forEach((b) => b.addEventListener("click", () => setView(b.dataset.viewBtn)));
+  desktop.addEventListener("change", () => setView(state.view));
+
+  /* ---------- Fichiers ---------- */
+  async function openFiles(list) {
+    const files = [...list];
+    if (!files.length) return;
+    const added = [], skipped = [];
+    for (const f of files) {
+      if (!OK_EXT.test(f.name)) { skipped.push(f.name); continue; }
+      if (f.size > MAX_BYTES) { skipped.push(`${f.name} (plus de 5 Mo)`); continue; }
+      try { added.push(addDoc(f.name, (await f.text()).replace(/^\uFEFF/, ""))); }
+      catch { skipped.push(`${f.name} (lecture impossible)`); }
+    }
+    if (added.length) { state.active = added[0].id; refresh(); }
+    const ok = added.length === 1 ? `${added[0].name} ouvert` : added.length > 1 ? `${added.length} fichiers ouverts` : "";
+    const ko = skipped.length ? `Ignoré : ${skipped.join(", ")}. Formats acceptés : .md, .markdown, .txt.` : "";
+    if (ok || ko) toast([ok, ko].filter(Boolean).join(" "));
+  }
+  const pick = () => el.input.click();
+  $("#btnOpen").onclick = pick;
+  $("#emptyOpen").onclick = pick;
+  $("#emptyNew").onclick = newDoc;
+  $("#emptySample").onclick = () => { activate(addDoc("guide.md", SAMPLE).id); };
+  el.input.addEventListener("change", () => { openFiles(el.input.files); el.input.value = ""; });
+
+  /* Glisser-déposer sur toute la page */
+  let depth = 0;
+  const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  window.addEventListener("dragenter", (e) => { if (hasFiles(e)) { depth++; el.veil.classList.add("on"); } });
+  window.addEventListener("dragleave", (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; el.veil.classList.remove("on"); } });
+  window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); depth = 0; el.veil.classList.remove("on");
+    openFiles(e.dataTransfer.files);
+  });
+
+  /* ---------- Sorties ---------- */
+  function save(filename, data) {
+    const blob = data instanceof Blob ? data : new Blob([data], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), { href: url, download: filename });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    // Dans Electron, la confirmation arrive via « download-done » ; dans un navigateur, on notifie tout de suite.
+    if (!window.desktop) toast(`Téléchargé : ${filename}`);
+  }
+  function saveCurrent() {
+    const d = current();
+    if (d && downloads) save(htmlName(d.name), outputFor(d));
+  }
+  function saveAll() {
+    const used = new Map();
+    const files = state.docs.map((d) => {
+      let name = htmlName(d.name);
+      const n = used.get(name) || 0;
+      used.set(name, n + 1);
+      if (n) name = name.replace(/\.html$/, `-${n + 1}.html`);
+      return { name, text: outputFor(d) };
+    });
+    save("md2html.zip", makeZip(files));
+  }
+  async function copyHtml() {
+    const d = current();
+    if (!d) return;
+    const text = outputFor(d);
+    try { await navigator.clipboard.writeText(text); toast("HTML copié"); return; } catch {}
+    try {
+      const t = document.createElement("textarea");
+      t.value = text; t.style.cssText = "position:fixed;opacity:0";
+      document.body.append(t); t.select();
+      const ok = document.execCommand("copy");
+      t.remove();
+      if (ok) { toast("HTML copié"); return; }
+    } catch {}
+    setView("html");
+    el.htmlOut.focus(); el.htmlOut.select();
+    toast("Copie bloquée par le navigateur : le code est sélectionné, utilise Ctrl/⌘ + C.");
+  }
+  el.save.onclick = saveCurrent;
+  el.zip.onclick = saveAll;
+  el.copy.onclick = copyHtml;
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && !el.wrap.hidden) { e.preventDefault(); saveCurrent(); }
+  });
+
+  /* Application de bureau : le téléchargement est toujours disponible */
+  downloads = true;
+  el.save.disabled = false;
+  window.desktop?.onOpenFile(({ name, text }) => { activate(addDoc(name, text).id); toast(`${name} ouvert`); });
+  window.desktop?.onDownloadDone(({ name, state }) =>
+    toast(state === "completed" ? `Téléchargé : ${name}` : "Téléchargement annulé."));
+
+  refresh();
+  setView("preview");
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "name": "md2html-desktop",
+  "version": "1.0.0",
+  "description": "Convertisseur Markdown vers HTML",
+  "homepage": "https://example.com/md2html",
+  "desktopName": "md2html.desktop",
+  "author": "SABF <sabfsanon@gmail.com>",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --linux AppImage deb"
+  },
+  "devDependencies": {
+    "electron": "^44.6.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.sabf.md2html",
+    "productName": "md2html",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "index.html", "fonts/**/*", "build/icon.png"],
+    "fileAssociations": [
+      { "ext": "md", "name": "Markdown", "mimeType": "text/markdown", "role": "Editor" },
+      { "ext": "markdown", "name": "Markdown", "mimeType": "text/markdown", "role": "Editor" }
+    ],
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "maintainer": "SABF <sabfsanon@gmail.com>",
+      "syncDesktopName": true
+    }
+  }
+}
